@@ -12,13 +12,13 @@ from run_dungeon_model import run_dungeon_model
 
 def objective(trial: Trial) -> float:
     mode = 'lstm'
-    embed_dim = trial.suggest_int('embed_dim', 16, 64, step=8)
-    hidden_dim = trial.suggest_int('hidden_dim', 32, 128, step=16)
+    embed_dim = trial.suggest_int('embed_dim', 4, 32, step=2)
+    hidden_dim = trial.suggest_int('hidden_dim', 1, 8, step=1)
     dropout = trial.suggest_float('dropout', 0.2, 0.6)
-    num_layers = trial.suggest_int('num_layers', 1, 2)
-    bidirectional = False
+    num_layers = trial.suggest_int('num_layers', 1, 4)
+    bidirectional = True
     batch_size = 32
-    epochs = trial.suggest_int('epochs', 30, 80)
+    epochs = 50
     learning_rate = trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
     optimizer_name = 'adam'
     weight_decay = trial.suggest_float('weight_decay', 0.0, 0.05)
