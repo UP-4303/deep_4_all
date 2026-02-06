@@ -21,4 +21,23 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "sentencepiece>=0.2.1",
     "transformers>=4.57.5",
+    "torch",
+    "torchvision",
 ]
+
+[project.optional-dependencies]
+cu130 = [
+    # these are the same packages, but when this extra is enabled,
+    # uv will source them from the CUDA index via tool.uv.sources below
+    "torch",
+    "torchvision",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", extra = "cu130" }]
+torchvision = [{ index = "pytorch-cu130", extra = "cu130" }]

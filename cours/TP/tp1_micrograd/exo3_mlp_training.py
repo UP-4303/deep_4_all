@@ -37,7 +37,29 @@ from micrograd.nn import MLP
 
 
 def hinge_loss(y, y_preds):
-    return [(Value(1.0) - y_i * y_pred_i).sigmoid() for y_i, y_pred_i in zip(y, y_preds)]
+    return [(1 + -yi * y_predi).relu() for yi, y_predi in zip(y, y_preds)]
+
+
+def bce_loss(y, y_preds):
+    """
+    Binary Cross-Entropy Loss avec sigmoid.
+
+    TODO: Implementer cette fonction
+
+    Formule : Loss = -t * log(p) - (1-t) * log(1-p)
+    Ou :
+        - t : label cible (0 ou 1, converti depuis -1/+1)
+        - p : sigmoid(y_pred) = probabilite predite
+
+    Etapes pour chaque paire (yi, y_predi):
+        1. Convertir le label de -1/+1 vers 0/1 : t = (yi + 1) / 2
+        2. Appliquer sigmoid sur la prediction : p = y_predi.sigmoid()
+        3. Calculer la BCE : loss = -(t * p.log() + (1-t) * (1-p).log())
+           Attention: (1-t) et (1-p) doivent etre des Value!
+
+    Retourne une liste de Value contenant la loss pour chaque exemple.
+    """
+    raise NotImplementedError("TODO: Implementer bce_loss()")
 
 
 # =============================================================================
@@ -77,10 +99,10 @@ for k in range(epochs):
     # map(model, inputs) execute model(x) pour chaque ligne x
     y_preds = list(map(model, inputs))
 
-    # --- B. CALCUL DE LA LOSS (Max Margin / SVM Loss) ---
-    # Loss_i = max(0, 1 - y_target * y_pred)
-    # L'objectif est que (y_target * y_pred) soit > 1 (bonne classification avec marge)
-    losses = hinge_loss(y, y_preds)
+    # --- B. CALCUL DE LA LOSS (Binary Cross-Entropy avec Sigmoid) ---
+    # Loss_i = -t*log(sigmoid(pred)) - (1-t)*log(1-sigmoid(pred))
+    # L'objectif est de maximiser la probabilité de la bonne classe
+    losses = bce_loss(y, y_preds)
 
     data_loss = sum(losses) * (1.0 / len(losses))  # Moyenne
 

@@ -1,5 +1,6 @@
 import math
 
+
 class Value:
     """
     Noeud du graphe de calcul.
@@ -35,8 +36,8 @@ class Value:
             derivee_locale_other = 1.0  # dz/dy
 
             # Application de la Chain Rule
-            self.grad = grad_externe * derivee_locale_self
-            other.grad = grad_externe * derivee_locale_other
+            self.grad += grad_externe * derivee_locale_self
+            other.grad += grad_externe * derivee_locale_other
 
         out._backward = _backward
         return out
@@ -132,6 +133,67 @@ class Value:
 
         out._backward = _backward
         return out
+    
+    # ==========================================================================
+    # 4. ACTIVATION sigmoid : z = 1 / (1 + e^(-x))
+    # ==========================================================================
+    def sigmoid(self):
+        # Forward
+        out = Value(1 / (1 + math.exp(-self.data)), (self,), 'sigmoid')
+
+        def _backward():
+            # --- MATHÉMATIQUES ---
+            # dz/dx = sigmoid(x) * (1 - sigmoid(x))
+
+            grad_externe = out.grad
+
+            # Indicateur : sigmoid(x) * (1 - sigmoid(x))
+            derivee_locale = out.data * (1 - out.data)
+
+            self.grad += grad_externe * derivee_locale
+
+        out._backward = _backward
+        return out
+
+    # ==========================================================================
+    # 5. ACTIVATION SIGMOID : z = 1 / (1 + e^(-x))
+    # ==========================================================================
+    def sigmoid(self):
+        # TODO: Implementer la fonction sigmoid
+        #
+        # Etapes:
+        # 1. Calculer la valeur de sortie (attention a la stabilite numerique!)
+        #    - Si x >= 0: sig = 1 / (1 + exp(-x))
+        #    - Si x < 0:  sig = exp(x) / (1 + exp(x))
+        #
+        # 2. Creer le nouveau noeud Value avec (self,) comme source
+        #
+        # 3. Definir la fonction _backward
+        #    - Derivee: d(sigmoid)/dx = sig * (1 - sig)
+        #
+        # 4. Retourner le noeud de sortie
+
+        raise NotImplementedError("TODO: Implementer sigmoid()")
+
+    # ==========================================================================
+    # 6. LOGARITHME : z = log(x)
+    # ==========================================================================
+    def log(self):
+        # TODO: Implementer la fonction logarithme naturel
+        #
+        # Etapes:
+        # 1. Calculer la valeur de sortie: z = log(x)
+        #    - Ajouter un epsilon (ex: 1e-7) pour eviter log(0)
+        #    - Utiliser math.log()
+        #
+        # 2. Creer le nouveau noeud Value avec (self,) comme source
+        #
+        # 3. Definir la fonction _backward
+        #    - Derivee: d(log)/dx = 1/x
+        #
+        # 4. Retourner le noeud de sortie
+
+        raise NotImplementedError("TODO: Implementer log()")
 
     # ==========================================================================
     # MOTEUR DE RÉTROPROPAGATION (Backpropagation Engine)
