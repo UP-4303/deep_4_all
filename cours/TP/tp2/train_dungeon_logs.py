@@ -22,6 +22,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+import tqdm
 
 from baseline_model import DungeonOracle, count_parameters
 
@@ -320,7 +321,7 @@ def main(args):
     best_val_acc = 0
     patience_counter = 0
 
-    for epoch in range(args.epochs):
+    for epoch in tqdm.trange(args.epochs):
         # Train
         train_loss, train_acc = train_epoch(
                 model, train_loader, criterion, optimizer, device
@@ -340,11 +341,11 @@ def main(args):
         history['val_acc'].append(val_acc)
 
         # Affichage
-        print(
-                f"Epoch {epoch + 1:3d}/{args.epochs} | "
-                f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2%} | "
-                f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2%}"
-                )
+        # print(
+        #         f"Epoch {epoch + 1:3d}/{args.epochs} | "
+        #         f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2%} | "
+        #         f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2%}"
+        #         )
 
         # Sauvegarder le meilleur modèle
         if val_acc > best_val_acc:
