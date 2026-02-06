@@ -5,24 +5,11 @@
 Instead of manually tweaking hyperparameters in `run_model.py`, you can now use automated optimization scripts to find the best configuration for your model.
 
 Two scripts are provided:
-1. **`optimize_simple.py`** - Simple random/grid search (no external dependencies)
-2. **`optimize_hyperparams.py`** - Advanced optimization using Optuna (requires installation)
+ - **`optimize_hyperparams.py`** - Advanced optimization using Optuna (requires installation)
 
 Both scripts focus on finding **small models** that generalize well, as mentioned in the challenge guidelines.
 
 ## Quick Start
-
-### Option 1: Simple Search (Recommended to start)
-
-```bash
-# Random search with 20 trials (fast)
-uv run optimize_simple.py --mode random --n_trials 20
-
-# Grid search (exhaustive, slower)
-uv run optimize_simple.py --mode grid
-```
-
-### Option 2: Advanced Search with Optuna
 
 First, install Optuna:
 ```bash
@@ -70,30 +57,6 @@ Where `overfitting_penalty` penalizes models with large train-val gaps (>15%), e
 
 ## Understanding Results
 
-### Simple Search Output
-
-After completion, you'll see:
-```
-BEST CONFIGURATION
-==================
-Trial: 5
-Score: 0.8234
-Validation Accuracy: 0.8456
-Train-Val Gap: 0.0444
-
-Hyperparameters:
-  hidden_dim: 16
-  num_layers: 2
-  dropout: 0.3
-  ...
-```
-
-Results are saved to `search_results/`:
-- `all_results_YYYYMMDD_HHMMSS.json` - All trial results
-- `best_config_YYYYMMDD_HHMMSS.json` - Best configuration
-
-### Optuna Output
-
 Optuna provides additional insights:
 - **Optimization history plot** - Shows improvement over trials
 - **Parameter importance** - Which parameters matter most
@@ -104,32 +67,6 @@ Results saved to `optimization_results/`:
 - `oracle_optimization_history.png` - Optimization plot
 - `oracle_optimization_importance.png` - Feature importance
 - `oracle_optimization.db` - SQLite database with all trials
-
-## Tips for Better Results
-
-### 1. Start Small
-```bash
-# Quick test with 10 trials
-uv run optimize_simple.py --n_trials 10
-```
-
-### 2. Increase Trials Gradually
-```bash
-# If results look promising, increase trials
-uv run optimize_simple.py --n_trials 50
-```
-
-### 3. Use Optuna for Fine-Tuning
-```bash
-# After finding good ranges, use Optuna for intelligent search
-uv run optimize_hyperparams.py --n_trials 100
-```
-
-### 4. Resume Interrupted Searches
-```bash
-# Optuna saves progress - you can continue later
-uv run optimize_hyperparams.py --n_trials 50 --load_if_exists
-```
 
 ## Key Insights from the Challenge
 
@@ -199,17 +136,6 @@ uv run train_oracle.py --normalize --shuffle --optimizer adam --scheduler cosine
 ## Advanced: Customizing Search Space
 
 Edit the search space in the optimization scripts:
-
-### In `optimize_simple.py`:
-```python
-def random_search(n_trials: int, seed: int = 42):
-    # Modify these ranges
-    config = {
-        'hidden_dim': random.choice([4, 8, 16]),  # Focus on small models
-        'num_layers': random.randint(1, 2),        # Only shallow networks
-        ...
-    }
-```
 
 ### In `optimize_hyperparams.py`:
 ```python
