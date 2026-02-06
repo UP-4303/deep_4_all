@@ -24,6 +24,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
 from baseline_model import GuildOracle, count_parameters
+import tqdm
 
 
 # ============================================================================
@@ -64,7 +65,7 @@ class AdventurerDataset(Dataset):
 # Boucle d'entraînement
 # ============================================================================
 
-def train_epoch(model, dataloader, criterion, optimizer, device):
+def train_epoch(model, dataloader, criterion, optimizer, device, lambda_l1=0.0, lambda_l2=0.0):
     """Entraîne le modèle pour une epoch."""
     model.train()
     total_loss = 0
@@ -80,6 +81,13 @@ def train_epoch(model, dataloader, criterion, optimizer, device):
 
         # Loss et backward
         loss = criterion(outputs, labels)
+        
+        # Ajouter régularisation L1 et L2
+        if lambda_l1 > 0:
+            loss += lambda_l1 * model.l1_regularization()
+        if lambda_l2 > 0:
+            loss += lambda_l2 * model.l2_regularization()
+        
         loss.backward()
         optimizer.step()
 
@@ -158,7 +166,9 @@ def main(args):
     print("\nCréation du modèle...")
     model = GuildOracle(
             input_dim=train_dataset.features.shape[1],
-            hidden_dim=args.hidden_dim
+            hidden_dim=args.hidden_dim,
+            num_layers=args.num_layers,
+            dropout=args.dropout
             )
     model = model.to(device)
     print(f"Paramètres: {count_parameters(model):,}")
@@ -180,12 +190,31 @@ def main(args):
                 weight_decay=args.weight_decay
                 )
 
+    # Learning rate scheduler
+    scheduler = None
+    if args.scheduler == 'cosine':
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=args.epochs, eta_min=args.learning_rate * 0.01
+                )
+        print(f"Scheduler: CosineAnnealingLR")
+    elif args.scheduler == 'plateau':
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='max', factor=0.5, patience=10
+                )
+        print(f"Scheduler: ReduceLROnPlateau")
+    elif args.scheduler == 'step':
+        scheduler = optim.lr_scheduler.StepLR(
+                optimizer, step_size=50, gamma=0.5
+                )
+        print(f"Scheduler: StepLR")
+
     print(f"Optimiseur: {args.optimizer.upper()}, LR: {args.learning_rate}")
 
     # Historique
     history = {
         'train_loss': [], 'train_acc': [],
-        'val_loss':   [], 'val_acc': []
+        'val_loss':   [], 'val_acc': [],
+        'learning_rates': []
         }
 
     # Entraînement
@@ -196,10 +225,11 @@ def main(args):
     best_val_acc = 0
     patience_counter = 0
 
-    for epoch in range(args.epochs):
+    for epoch in tqdm.trange(args.epochs):
         # Train
         train_loss, train_acc = train_epoch(
-                model, train_loader, criterion, optimizer, device
+                model, train_loader, criterion, optimizer, device,
+                lambda_l1=args.lambda_l1, lambda_l2=args.lambda_l2
                 )
 
         # Validation
@@ -210,13 +240,23 @@ def main(args):
         history['train_acc'].append(train_acc)
         history['val_loss'].append(val_loss)
         history['val_acc'].append(val_acc)
+        history['learning_rates'].append(optimizer.param_groups[0]['lr'])
 
         # Affichage
-        print(
-                f"Epoch {epoch + 1:3d}/{args.epochs} | "
-                f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2%} | "
-                f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2%}"
-                )
+        current_lr = optimizer.param_groups[0]['lr']
+        # print(
+        #         f"Epoch {epoch + 1:3d}/{args.epochs} | "
+        #         f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2%} | "
+        #         f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2%} | "
+        #         f"LR: {current_lr:.6f}"
+        #         )
+
+        # Update learning rate scheduler
+        if scheduler is not None:
+            if args.scheduler == 'plateau':
+                scheduler.step(val_acc)
+            else:
+                scheduler.step()
 
         # Sauvegarder le meilleur modèle (modele complet pour supporter architectures custom)
         if val_acc > best_val_acc:
@@ -236,11 +276,20 @@ def main(args):
     print(f"Modèle sauvegardé: {checkpoint_dir / 'best_model.pt'}")
     print("=" * 50)
 
+    gap = history['train_acc'][-1] - history['val_acc'][-1]
+
     with open(checkpoint_dir / "history.json", 'w') as f:
         json.dump(history, f, indent=4)
 
+    with open(checkpoint_dir / "res.json", 'w') as f:
+        json.dump({
+            'best_val_acc': best_val_acc,
+            'parameters': vars(args),
+            'history': history,
+            'gap_train_val': gap
+        }, f, indent=4)
+
     # Analyse de l'overfitting
-    gap = history['train_acc'][-1] - history['val_acc'][-1]
     print(f"\nGap Train-Val (dernière epoch): {gap:.2%}")
     if gap > 0.10:
         print("ATTENTION: Gap important ! Risque d'overfitting.")
@@ -300,6 +349,10 @@ if __name__ == "__main__":
             '--hidden_dim', type=int, default=256,
             help='Dimension des couches cachées'
             )
+    parser.add_argument(
+            '--num_layers', type=int, default=5,
+            help='Nombre de couches cachées'
+            )
 
     # Entraînement
     parser.add_argument(
@@ -320,8 +373,25 @@ if __name__ == "__main__":
             help='Optimiseur'
             )
     parser.add_argument(
+            '--scheduler', type=str, default=None,
+            choices=['cosine', 'plateau', 'step', None],
+            help='Learning rate scheduler'
+            )
+    parser.add_argument(
             '--weight_decay', type=float, default=0.0,
-            help='Weight decay (L2 regularization)'
+            help='Weight decay (L2 regularization via optimizer)'
+            )
+    parser.add_argument(
+            '--dropout', type=float, default=0.5,
+            help='Dropout rate'
+            )
+    parser.add_argument(
+            '--lambda_l1', type=float, default=0.0,
+            help='L1 regularization coefficient (manual)'
+            )
+    parser.add_argument(
+            '--lambda_l2', type=float, default=0.0,
+            help='L2 regularization coefficient (manual, additional to weight_decay)'
             )
 
     # Early stopping

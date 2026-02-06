@@ -37,7 +37,7 @@ from micrograd.nn import MLP
 
 
 def hinge_loss(y, y_preds):
-    return []
+    return [(Value(1.0) - y_i * y_pred_i).sigmoid() for y_i, y_pred_i in zip(y, y_preds)]
 
 
 # =============================================================================

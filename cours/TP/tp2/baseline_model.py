@@ -25,16 +25,40 @@ class GuildOracle(nn.Module):
     Architecture : MLP profond (trop profond !)
     """
 
-    def __init__(self, input_dim: int = 8, hidden_dim: int = 256, num_layers: int = 5):
+    def __init__(self, input_dim: int = 8, hidden_dim: int = 256, num_layers: int = 5, dropout: float = 0.5):
         """
         Args:
             input_dim: Nombre de features (8 stats)
             hidden_dim: Dimension des couches cachées
             num_layers: Nombre de couches cachées
+            dropout: Taux de dropout pour régularisation
         """
         super().__init__()
-        # TODO
-        self.network = nn.Sequential()
+        if num_layers < 1:
+            raise ValueError("num_layers doit être au moins 1")
+
+        layers = []
+        
+        if num_layers == 1:
+            layers.append(nn.Linear(input_dim, 1))
+        else:
+            # Couche d'entrée
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))  # Dropout pour régularisation
+
+            # Couches cachées
+            for i in range(num_layers - 1):
+                layers.append(nn.Linear(hidden_dim, hidden_dim))
+                layers.append(nn.BatchNorm1d(hidden_dim))
+                layers.append(nn.ReLU())  # Alternance d'activations
+                layers.append(nn.Dropout(dropout))  # Dropout pour régularisation
+
+            # Couche de sortie
+            layers.append(nn.Linear(hidden_dim, 1))
+        
+        self.network = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -58,6 +82,41 @@ class GuildOracle(nn.Module):
         """Retourne les prédictions binaires."""
         proba = self.predict_proba(x)
         return (proba > 0.5).float()
+
+    def l1_regularization(self) -> torch.Tensor:
+        """
+        Calcule la pénalité L1 (somme des valeurs absolues des poids).
+        
+        À utiliser dans la fonction de perte:
+            loss = criterion(outputs, targets) + lambda_l1 * model.l1_regularization()
+        
+        Returns:
+            Pénalité L1 (scalaire)
+        """
+        l1_penalty = 0.0
+        for module in self.network.modules():
+            if isinstance(module, nn.Linear):
+                l1_penalty += torch.sum(torch.abs(module.weight))
+        return l1_penalty
+
+    def l2_regularization(self) -> torch.Tensor:
+        """
+        Calcule la pénalité L2 (somme des carrés des poids).
+        
+        Note: PyTorch inclut L2 via weight_decay dans l'optimiseur.
+        Cette méthode est utile pour un contrôle manuel.
+        
+        À utiliser dans la fonction de perte:
+            loss = criterion(outputs, targets) + lambda_l2 * model.l2_regularization()
+        
+        Returns:
+            Pénalité L2 (scalaire)
+        """
+        l2_penalty = 0.0
+        for module in self.network.modules():
+            if isinstance(module, nn.Linear):
+                l2_penalty += torch.sum(module.weight ** 2)
+        return l2_penalty
 
 
 # ============================================================================

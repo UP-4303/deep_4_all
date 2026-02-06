@@ -1,3 +1,5 @@
+import math
+
 class Value:
     """
     Noeud du graphe de calcul.
@@ -55,8 +57,8 @@ class Value:
 
             grad_externe = out.grad  # dL/dz
 
-            derivee_locale_self = self.data  # dz/dx = y
-            derivee_locale_other =  other.data # dz/dy = x
+            derivee_locale_self = other.data  # dz/dx = y
+            derivee_locale_other =  self.data # dz/dy = x
 
             # Application de la Chain Rule
             self.grad += grad_externe * derivee_locale_self
@@ -104,6 +106,27 @@ class Value:
 
             # Indicateur : 1 si actif, 0 si inactif
             derivee_locale = 1.0 if out.data > 0 else 0.0
+
+            self.grad += grad_externe * derivee_locale
+
+        out._backward = _backward
+        return out
+    
+    # ==========================================================================
+    # 4. ACTIVATION sigmoid : z = 1 / (1 + e^(-x))
+    # ==========================================================================
+    def sigmoid(self):
+        # Forward
+        out = Value(1 / (1 + math.exp(-self.data)), (self,), 'sigmoid')
+
+        def _backward():
+            # --- MATHÉMATIQUES ---
+            # dz/dx = sigmoid(x) * (1 - sigmoid(x))
+
+            grad_externe = out.grad
+
+            # Indicateur : sigmoid(x) * (1 - sigmoid(x))
+            derivee_locale = out.data * (1 - out.data)
 
             self.grad += grad_externe * derivee_locale
 
