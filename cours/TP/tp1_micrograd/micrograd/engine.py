@@ -1,6 +1,9 @@
 import math
 
 
+import math
+
+
 class Value:
     """
     Noeud du graphe de calcul.
