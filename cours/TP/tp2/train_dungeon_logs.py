@@ -274,6 +274,7 @@ def main(args):
             max_length=train_dataset.max_length,
             bidirectional=args.bidirectional,
             padding_idx=train_dataset.pad_idx,
+            num_heads=args.num_heads,
             )
     model = model.to(device)
 
@@ -448,11 +449,15 @@ if __name__ == "__main__":
             '--mode',
             type=str,
             default='linear',
-            choices=['linear', 'rnn', 'lstm'],
+            choices=['linear', 'rnn', 'lstm', 'attention'],
             help='Architecture du modèle (default: %(default)s)')
     parser.add_argument(
             '--bidirectional', action='store_true', default=False,
             help='RNN/LSTM bidirectionnel'
+            )
+    parser.add_argument(
+            '--num_heads', type=int, default=2,
+            help='Nombre de têtes d\'attention (pour mode attention)'
             )
 
     # Entraînement
