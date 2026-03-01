@@ -19,4 +19,10 @@ Nous avons utilisé un ensemble de données de 1000 exemples de parties de poker
 
 ## Résultats
 
+Il est difficile d'évaluer les performances du modèle étudiant, car il n'est pas clair comment mesurer la qualité d'une action dans le contexte d'une partie de poker de façon fiable.
+
+À vu d'œil, le modèle étudiant semble produire des réponses cohérentes, analysant la partie en détail dans son raisonnement simulé. Il hésite parfois entre plusieurs actions, ce qui le pousse dans un raisonnement parfois long, donnant lieu à une lecture approfondie de la partie.
+
+Il a cependant été observé que le modèle étudiant avait parfois du mal à formater correctement ses réponses, en répondant par exemple "RAISE TO 7BB" au lieu de "RAISE 7BB", même si l'action avait déjà été utilisée dans la partie, fournissant donc un exemple correctement formaté dans le prompt.
+
 ## Discussion
