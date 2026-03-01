@@ -17,6 +17,12 @@ Nous avons utilisé un ensemble de données de 1000 exemples de parties de poker
 
 ## Méthodologie
 
+Nous avons extrait 1000 exemples du [Poker_Dataset](https://huggingface.co/datasets/SoelMgd/Poker_Dataset) sur HuggingFace et généré des réponses via l'API Infomaniak (modèle GPT-OSS-120B) à deux températures différentes : 0.3 pour les données stables et 0.9 pour les données diversifiées. Les réponses ont été générées en parallèle avec ThreadPool (10 workers) et converties au format ShareGPT compatible avec Llama-Factory, en extrayant les logprobs pour chaque réponse.
+
+Le filtrage DAS a été implémenté pour identifier les exemples où l'étudiant (Qwen3-4B-Instruct-2507 quantizé 4-bit) a le plus à apprendre du teacher. Deux conditions doivent être satisfaites : le teacher doit être plus confiant que l'étudiant (PT - PS ≥ 0) et suffisamment confiant (PT ≥ 0.6). La divergence est calculée en comparant les probabilités géométriques moyennes de chaque modèle.
+
+L'entraînement a été effectué sur Kaggle avec 2 GPUs T4. Le stage 1 (données basse température) a pu être complété avec 1000 exemples en utilisant LoRA (rank 8, learning rate 1e-4, 3 epochs), estimé à environ 30 minutes. Le stage 2 n'a pas pu être réalisé en raison d'un taux de filtrage DAS inférieur à 10% sur les données haute température, produisant trop peu d'exemples valides. Les principaux défis techniques (rate limiting API, OOM GPU, tokenization inconsistencies) ont été résolus via exponential backoff, quantization 4-bit et application uniforme du chat template Qwen3.
+
 ## Résultats
 
 Il est difficile d'évaluer les performances du modèle étudiant, car il n'est pas clair comment mesurer la qualité d'une action dans le contexte d'une partie de poker de façon fiable.
@@ -30,3 +36,4 @@ Il a cependant été observé que le modèle étudiant avait parfois du mal à f
 Malgré les efforts pour ajuster les paramètres de la méthode DASD, il semble que le modèle enseignant n'était pas suffisamment confiant dans ses réponses à haute température, ce qui a limité la quantité de données utilisées pour l'entraînement du modèle étudiant.
 
 Par limite de temps, il avait été choisi d'effectuer l'entraînement sur un nombre réduit d'exemples, mais il aurait été pertinent de l'entrainer avec le dataset complet (47K lignes, dont 1K utilisées pour l'entraînement dans ce TP).
+
