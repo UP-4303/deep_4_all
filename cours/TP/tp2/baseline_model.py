@@ -124,11 +124,51 @@ class GuildOracle(nn.Module):
 # ============================================================================
 
 
+class PositionalEncoding(nn.Module):
+    """
+    Ajoute des informations de position aux embeddings.
+    Nécessaire pour l'attention car elle n'a pas de notion intrinsèque de l'ordre.
+    
+    Utilise des fonctions sinus/cosinus pour encoder la position.
+    """
+    def __init__(self, embed_dim: int, max_length: int = 1000, dropout: float = 0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        
+        # Créer une matrice de positions
+        position = torch.arange(max_length).unsqueeze(1)  # (max_length, 1)
+        div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-torch.log(torch.tensor(10000.0)) / embed_dim))
+        
+        pe = torch.zeros(max_length, embed_dim)
+        pe[:, 0::2] = torch.sin(position * div_term)  # Dimensions paires
+        pe[:, 1::2] = torch.cos(position * div_term)  # Dimensions impaires
+        
+        # Shape: (1, max_length, embed_dim) pour broadcasting
+        pe = pe.unsqueeze(0)
+        
+        # Register as buffer (not a parameter, but part of state)
+        self.register_buffer('pe', pe)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Tensor de shape (batch_size, seq_length, embed_dim)
+        Returns:
+            Tensor avec positions ajoutées, même shape
+        """
+        x = x + self.pe[:, :x.size(1), :]
+        return self.dropout(x)
+
+
 class DungeonOracle(nn.Module):
     """
     Modèle baseline pour prédire la survie à partir d'une séquence d'événements.
 
-    Architecture : Embedding + LSTM + Classifier
+    Architectures disponibles:
+    - linear: Embedding → Flatten → MLP
+    - rnn: Embedding → RNN → Classifier  
+    - lstm: Embedding → LSTM → Classifier
+    - attention: Embedding → Positional Encoding → Self-Attention → Classifier (NOUVEAU)
 
     PROBLEMES VOLONTAIRES (à corriger par les étudiants):
     1. Embedding dimension trop petite (8) -> perd de l'information semantique
@@ -147,18 +187,21 @@ class DungeonOracle(nn.Module):
             mode: str = "linear",
             bidirectional: bool = False,
             padding_idx: int = 0,
-            max_length: int = 140
+            max_length: int = 140,
+            num_heads: int = 2  # Nouveau paramètre pour attention
             ):
         """
         Args:
             vocab_size: Taille du vocabulaire (nombre d'événements uniques)
             embed_dim: Dimension des embeddings
-            hidden_dim: Dimension de l'état caché du RNN/LSTM
-            num_layers: Nombre de couches RNN/LSTM
+            hidden_dim: Dimension de l'état caché du RNN/LSTM/Attention
+            num_layers: Nombre de couches RNN/LSTM/Attention
             dropout: Dropout entre les couches (si num_layers > 1)
-            mode: lstm, rnn, default: linear
-            bidirectional: Si True, RNN bidirectionnel
+            mode: "linear", "rnn", "lstm", ou "attention"
+            bidirectional: Si True, RNN bidirectionnel (non utilisé pour attention)
             padding_idx: Index du token de padding (ignoré dans les embeddings)
+            max_length: Longueur maximale de séquence
+            num_heads: Nombre de têtes d'attention (mode attention uniquement)
         """
         super().__init__()
 
@@ -166,6 +209,8 @@ class DungeonOracle(nn.Module):
         self.num_layers = num_layers
         self.bidirectional = bidirectional
         self.mode = mode.lower().strip()
+        self.num_heads = num_heads
+        self.max_length = max_length
 
         # Couche d'embedding : transforme les IDs en vecteurs denses
         # Le padding_idx=0 fait que le vecteur pour <PAD> reste à zéro
@@ -187,8 +232,58 @@ class DungeonOracle(nn.Module):
                 nn.Dropout(dropout),
                 nn.Linear(hidden_dim, 1)  # Sortie directe pour comparaison
                 )
-        if self.mode != "linear":
-            # Couche récurrente
+        
+        if self.mode == "attention":
+            # Architecture Self-Attention (plus petite que LSTM)
+            # AVANTAGES:
+            # - Parallélisable (vs séquentiel pour RNN/LSTM)
+            # - Capture les dépendances longues distance
+            # - Moins de paramètres si bien configuré
+            
+            # Positional encoding (ajoute info de position)
+            self.pos_encoder = PositionalEncoding(embed_dim, max_length, dropout)
+            
+            # Projection de embed_dim vers hidden_dim si nécessaire
+            if embed_dim != hidden_dim:
+                self.input_projection = nn.Linear(embed_dim, hidden_dim)
+            else:
+                self.input_projection = nn.Identity()
+            
+            # Multi-head self-attention
+            # num_heads doit diviser hidden_dim
+            assert hidden_dim % num_heads == 0, f"hidden_dim ({hidden_dim}) doit être divisible par num_heads ({num_heads})"
+            
+            self.attention_layers = nn.ModuleList([
+                nn.MultiheadAttention(
+                    embed_dim=hidden_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    batch_first=True
+                )
+                for _ in range(num_layers)
+            ])
+            
+            # Layer normalization après chaque attention
+            self.layer_norms = nn.ModuleList([
+                nn.LayerNorm(hidden_dim)
+                for _ in range(num_layers)
+            ])
+            
+            # Feed-forward network optionnel après attention
+            self.ffn = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            )
+            self.ffn_norm = nn.LayerNorm(hidden_dim)
+            
+            # Classifier
+            self.classifier = nn.Sequential(
+                nn.Linear(hidden_dim, 1)
+            )
+        
+        elif self.mode != "linear":
+            # Couche récurrente (RNN/LSTM)
             # PROBLEME: Par défaut c'est un RNN simple qui souffre du vanishing gradient
             rnn_class = nn.LSTM if self.mode == "lstm" else nn.RNN
 
@@ -227,7 +322,53 @@ class DungeonOracle(nn.Module):
         # (batch, seq_len) → (batch, seq_len, embed_dim)
         embedded = self.embedding(x)
 
-        if self.mode != "linear":
+        if self.mode == "linear":
+            # Mode linéaire nécessite une longueur fixe
+            # Pad ou truncate si nécessaire pour correspondre à max_length
+            batch_size, seq_len, embed_dim = embedded.shape
+            if seq_len != self.max_length:
+                padded = torch.zeros(batch_size, self.max_length, embed_dim, 
+                                    device=embedded.device, dtype=embedded.dtype)
+                copy_len = min(seq_len, self.max_length)
+                padded[:, :copy_len, :] = embedded[:, :copy_len, :]
+                embedded = padded
+            return self.solo_embeddings(embedded)
+        
+        elif self.mode == "attention":
+            # Architecture Self-Attention
+            
+            # Étape 2: Positional encoding
+            # (batch, seq_len, embed_dim) → (batch, seq_len, embed_dim)
+            embedded = self.pos_encoder(embedded)
+            
+            # Étape 3: Projection vers hidden_dim si nécessaire
+            # (batch, seq_len, embed_dim) → (batch, seq_len, hidden_dim)
+            x_proj = self.input_projection(embedded)
+            
+            # Étape 4: Appliquer les couches d'attention avec connexions résiduelles
+            for attention_layer, layer_norm in zip(self.attention_layers, self.layer_norms):
+                # Self-attention: query, key, value sont tous x_proj
+                # attn_output: (batch, seq_len, hidden_dim)
+                attn_output, _ = attention_layer(x_proj, x_proj, x_proj)
+                
+                # Connexion résiduelle + Layer Norm
+                x_proj = layer_norm(x_proj + attn_output)
+            
+            # Étape 5: Feed-forward network avec résiduelle
+            ffn_output = self.ffn(x_proj)
+            x_proj = self.ffn_norm(x_proj + ffn_output)
+            
+            # Étape 6: Pooling - moyenne sur la séquence
+            # (batch, seq_len, hidden_dim) → (batch, hidden_dim)
+            # Alternative: prendre le premier token (comme BERT avec [CLS])
+            pooled = x_proj.mean(dim=1)
+            
+            # Étape 7: Classification
+            logits = self.classifier(pooled)
+            
+            return logits
+        
+        elif self.mode != "linear":
             # Étape 2: Passage dans le RNN/LSTM
             # output: (batch, seq_len, hidden_dim * num_directions)
             # hidden: (num_layers * num_directions, batch, hidden_dim)
@@ -251,8 +392,6 @@ class DungeonOracle(nn.Module):
             logits = self.classifier(final_hidden)
 
             return logits
-        else:
-            return self.solo_embeddings(embedded)
 
     def predict_proba(self, x: torch.Tensor, lengths: torch.Tensor = None) -> torch.Tensor:
         """Retourne les probabilités de survie."""

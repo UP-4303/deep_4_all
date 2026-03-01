@@ -11,17 +11,28 @@ from run_dungeon_model import run_dungeon_model
 
 
 def objective(trial: Trial) -> float:
-    mode = 'lstm'
-    embed_dim = trial.suggest_int('embed_dim', 4, 32, step=2)
-    hidden_dim = trial.suggest_int('hidden_dim', 1, 8, step=1)
-    dropout = trial.suggest_float('dropout', 0.2, 0.6)
-    num_layers = trial.suggest_int('num_layers', 1, 4)
-    bidirectional = True
+    mode = "lstm"
+    # mode = "attention"
+    embed_dim = 1
+    hidden_dim = 1
+    dropout = trial.suggest_float('dropout', 0.0, 0.2)
+    num_layers = 1
+    
+    # Paramètres spécifiques selon le mode
+    if mode == 'lstm':
+        bidirectional = True
+        num_heads = 2  # Non utilisé pour LSTM
+    else:  # attention
+        bidirectional = False  # Non applicable pour attention
+        # num_heads doit diviser hidden_dim
+        num_heads = hidden_dim // 2 if hidden_dim >= 4 else 1
+
+    
     batch_size = 32
-    epochs = 50
-    learning_rate = trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
+    epochs = 100
+    learning_rate = trial.suggest_float('learning_rate', 0.0001, 0.01, log=True)
     optimizer_name = 'adam'
-    weight_decay = trial.suggest_float('weight_decay', 0.0, 0.05)
+    weight_decay = 0
     
     try:
         results = run_dungeon_model(
@@ -31,6 +42,7 @@ def objective(trial: Trial) -> float:
             dropout=dropout,
             mode=mode,
             bidirectional=bidirectional,
+            num_heads=num_heads,
             batch_size=batch_size,
             epochs=epochs,
             learning_rate=learning_rate,

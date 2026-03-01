@@ -21,6 +21,7 @@ def run_dungeon_model(
     dropout: float = 0.0,
     mode: str = 'linear',
     bidirectional: bool = False,
+    num_heads: int = 2,
     batch_size: int = 32,
     epochs: int = 6,
     learning_rate: float = 0.1,
@@ -85,6 +86,7 @@ def run_dungeon_model(
         max_length=train_dataset.max_length,
         bidirectional=bidirectional,
         padding_idx=train_dataset.pad_idx,
+        num_heads=num_heads,
     )
     model = model.to(device)
     
@@ -222,10 +224,12 @@ if __name__ == "__main__":
     parser.add_argument('--dropout', type=float, default=0.0,
                         help='Dropout entre les couches RNN')
     parser.add_argument('--mode', type=str, default='linear',
-                        choices=['linear', 'rnn', 'lstm'],
+                        choices=['linear', 'rnn', 'lstm', 'attention'],
                         help='Architecture du modèle')
     parser.add_argument('--bidirectional', action='store_true', default=False,
                         help='RNN/LSTM bidirectionnel')
+    parser.add_argument('--num_heads', type=int, default=2,
+                        help='Nombre de têtes d\'attention (pour mode attention)')
     
     parser.add_argument('--epochs', type=int, default=6,
                         help='Nombre d\'epochs')
@@ -267,6 +271,7 @@ if __name__ == "__main__":
         dropout=args.dropout,
         mode=args.mode,
         bidirectional=args.bidirectional,
+        num_heads=args.num_heads,
         batch_size=args.batch_size,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
