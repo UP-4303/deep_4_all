@@ -38,4 +38,3 @@ Il a cependant été observé que le modèle étudiant avait parfois du mal à f
 Malgré les efforts pour ajuster les paramètres de la méthode DASD, il semble que le modèle enseignant n'était pas suffisamment confiant dans ses réponses à haute température, ce qui a limité la quantité de données utilisées pour l'entraînement du modèle étudiant.
 
 Par limite de temps, il avait été choisi d'effectuer l'entraînement sur un nombre réduit d'exemples, mais il aurait été pertinent de l'entrainer avec le dataset complet (47K lignes, dont 1K utilisées pour l'entraînement dans ce TP).
-
