@@ -26,3 +26,7 @@ Il est difficile d'évaluer les performances du modèle étudiant, car il n'est 
 Il a cependant été observé que le modèle étudiant avait parfois du mal à formater correctement ses réponses, en répondant par exemple "RAISE TO 7BB" au lieu de "RAISE 7BB", même si l'action avait déjà été utilisée dans la partie, fournissant donc un exemple correctement formaté dans le prompt.
 
 ## Discussion
+
+Malgré les efforts pour ajuster les paramètres de la méthode DASD, il semble que le modèle enseignant n'était pas suffisamment confiant dans ses réponses à haute température, ce qui a limité la quantité de données utilisées pour l'entraînement du modèle étudiant.
+
+Par limite de temps, il avait été choisi d'effectuer l'entraînement sur un nombre réduit d'exemples, mais il aurait été pertinent de l'entrainer avec le dataset complet (47K lignes, dont 1K utilisées pour l'entraînement dans ce TP).
