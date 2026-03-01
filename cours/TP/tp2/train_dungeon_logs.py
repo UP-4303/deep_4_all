@@ -40,15 +40,18 @@ class DungeonLogDataset(Dataset):
             csv_path: str,
             vocab_path: str,
             max_length: int = 140,
+            category_weights: dict = None,
             ):
         """
         Args:
             csv_path: Chemin vers le fichier CSV des logs
             vocab_path: Chemin vers le fichier JSON du vocabulaire
             max_length: Longueur max des séquences (truncate si dépassé)
+            category_weights: Dictionnaire {category: weight} pour pondérer les échantillons
         """
         self.df = pd.read_csv(csv_path)
         self.max_length = max_length
+        self.category_weights = category_weights
 
         # Charger le vocabulaire
         with open(vocab_path, 'r', encoding='utf-8') as f:
@@ -61,6 +64,8 @@ class DungeonLogDataset(Dataset):
         self.sequences = []
         self.labels = []
         self.lengths = []
+        self.categories = []
+        self.weights = []
 
         for _, row in self.df.iterrows():
             # Parser la séquence "Entree -> Rat -> Sortie" en liste
@@ -76,9 +81,21 @@ class DungeonLogDataset(Dataset):
             self.sequences.append(torch.tensor(token_ids, dtype=torch.long))
             self.labels.append(row['survived'])
             self.lengths.append(len(token_ids))
+            
+            # Stocker la catégorie et calculer le poids
+            category = row.get('category', 'unknown')
+            self.categories.append(category)
+            
+            # Appliquer le poids de la catégorie si disponible
+            if self.category_weights:
+                weight = self.category_weights.get(category, 1.0)
+            else:
+                weight = 1.0
+            self.weights.append(weight)
 
         self.labels = torch.tensor(self.labels, dtype=torch.float32)
         self.lengths = torch.tensor(self.lengths, dtype=torch.long)
+        self.weights = torch.tensor(self.weights, dtype=torch.float32)
 
     def __len__(self):
         return len(self.labels)
@@ -86,6 +103,7 @@ class DungeonLogDataset(Dataset):
     def __getitem__(self, idx):
         sequence = self.sequences[idx]
         length = self.lengths[idx]
+        weight = self.weights[idx]
 
         # Padding à max_length si spécifié
         if self.max_length is not None:
@@ -100,7 +118,7 @@ class DungeonLogDataset(Dataset):
             padded_sequence[:seq_len] = sequence[:seq_len]
             sequence = padded_sequence
 
-        return sequence, self.labels[idx], length
+        return sequence, self.labels[idx], length, weight
 
     @property
     def vocab_size(self):
@@ -119,17 +137,21 @@ def train_epoch(model, dataloader, criterion, optimizer, device):
     correct = 0
     total = 0
 
-    for sequences, labels, lengths in dataloader:
+    for sequences, labels, lengths, weights in dataloader:
         sequences = sequences.to(device)
         labels = labels.to(device)
         lengths = lengths.to(device)
+        weights = weights.to(device)
 
         # Forward pass
         optimizer.zero_grad()
         outputs = model(sequences, lengths).squeeze()
 
         # Loss et backward
-        loss = criterion(outputs, labels)
+        per_sample_loss = criterion(outputs, labels)
+        weighted_loss = per_sample_loss * weights
+        loss = weighted_loss.mean()
+
         loss.backward()
 
         # Gradient clipping (important pour RNN!)
@@ -154,13 +176,14 @@ def evaluate(model, dataloader, criterion, device):
     total = 0
 
     with torch.no_grad():
-        for sequences, labels, lengths in dataloader:
+        for sequences, labels, lengths, _weights in dataloader:
             sequences = sequences.to(device)
             labels = labels.to(device)
             lengths = lengths.to(device)
+            # weights not used during evaluation
 
             outputs = model(sequences, lengths).squeeze()
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs, labels).mean()
 
             total_loss += loss.item() * len(labels)
             predictions = (torch.sigmoid(outputs) > 0.5).float()
@@ -178,7 +201,7 @@ def evaluate_by_category(model, dataloader, device, df):
     all_labels = []
 
     with torch.no_grad():
-        for sequences, labels, lengths in dataloader:
+        for sequences, labels, lengths, _weights in dataloader:
             sequences = sequences.to(device)
             lengths = lengths.to(device)
             outputs = model(sequences, lengths).squeeze()
@@ -226,17 +249,32 @@ def main(args):
     train_path = data_dir / "train_dungeon.csv"
     val_path = data_dir / "val_dungeon.csv"
 
+    train_df = pd.read_csv(train_path)
     val_df = pd.read_csv(val_path)
+
+    # Calculer les poids par catégorie si demandé
+    category_weights = {
+        'edge_case': 1.0,
+        'hard': 1.1,
+        'longterm_with_amulet_hard': 1.2,
+        'longterm_without_amulet_hard': 1.2,
+        'normal_short': 0.8,
+        'order_trap_die_hard': 1.1,
+        'order_trap_survive_hard': 1.1,
+        'random': 1.0
+    }
 
     # Charger les datasets
     print("Chargement des données...")
     train_dataset = DungeonLogDataset(
             str(train_path),
-            str(vocab_path)
+            str(vocab_path),
+            category_weights=category_weights
             )
     val_dataset = DungeonLogDataset(
             str(val_path),
-            str(vocab_path)
+            str(vocab_path),
+            category_weights=None  # Pas de pondération en validation
             )
 
     # DataLoaders
@@ -282,7 +320,7 @@ def main(args):
     print(f"Paramètres: {count_parameters(model):,}")
 
     # Loss et optimiseur
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(reduction='none')
 
     if args.optimizer == 'adam':
         optimizer = optim.Adam(

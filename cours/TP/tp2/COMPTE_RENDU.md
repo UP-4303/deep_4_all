@@ -7,6 +7,7 @@ Luque Mattéo
 
 Après multiples essais, nous sommes arrivés aux paramètres suivants :
 `uv run train_dungeon_logs.py --embed_dim 10 --hidden_dim 4 --num_layers 3 --dropout 0.3 --learning_rate 0.1 --mode lstm --bidirectional --epoch 50 --early_stopping --patience 5 --use_scheduler`
+`uv run train_dungeon_logs.py --embed_dim 4 --hidden_dim 2 --num_layers 2 --dropout=0.17 --learning_rate=0.02 --mode lstm --bidirectional --epochs 50 --early_stopping --patience 5 --use_scheduler --optimizer adam`
 
 Avec ceci, nous avons obtenu une précision de 0.9727 sur la validation et 0.97 sur le test secret, pour un total de 7496 paramètres.
 
